@@ -1,5 +1,9 @@
 #pragma once
 
+// NOTE(rajat): There could be even an render command implementation later
+// but that is not going to effect this that much, we can always implement
+// renderer beneath this API.
+
 #include "onster.h"
 #include "onster_math.h"
 
@@ -8,10 +12,11 @@
 
 extern void RenderInit();
 extern void RenderShutdown();
+extern void RenderUpdateProjection(m3 Projection);
 
 typedef struct texture texture;
 
-extern texture *CreateTexture(const char *FileName);
+extern texture *CreateTexture(char *FileName);
 extern void DeleteTextue(texture *Texture);
 extern void GetTextureBounds(texture *Texture, v2 *Bounds);
 

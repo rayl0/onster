@@ -17,25 +17,23 @@ static render_layer *Layer11 = NULL;
 static render_layer *Layer12 = NULL;
 static render_layer *Layer13 = NULL;
 
+static texture *Texture = NULL;
+static texture *Texture2 = NULL;
+
 void OnsterInit()
 {
     fprintf(stderr, "Init from onster\n");
 
     RenderInit();
 
+    m3 Projection = m3Ortho(0, 1024, 576, 0);
+    RenderUpdateProjection(Projection);
+
     Layer = CreateRenderLayer();
     Layer2 = CreateRenderLayer();
-    Layer3 = CreateRenderLayer();
-    Layer4 = CreateRenderLayer();
-    Layer5 = CreateRenderLayer();
-    Layer6 = CreateRenderLayer();
-    Layer7 = CreateRenderLayer();
-    Layer8 = CreateRenderLayer();
-    Layer9 = CreateRenderLayer();
-    Layer10 = CreateRenderLayer();
-    Layer11 = CreateRenderLayer();
-    Layer12 = CreateRenderLayer();
-    Layer13 = CreateRenderLayer();
+
+    Texture = CreateTexture("./tiles.png");
+    Texture2 = CreateTexture("./list.png");
 }
 
 static u32 Count = 0;
@@ -47,17 +45,8 @@ void OnsterUpdateAndRender(onster_input *Input, r32 dt)
     {
         DeleteRenderLayer(Layer);
         DeleteRenderLayer(Layer2);
-        DeleteRenderLayer(Layer3);
-        DeleteRenderLayer(Layer4);
-        DeleteRenderLayer(Layer5);
-        DeleteRenderLayer(Layer6);
-        DeleteRenderLayer(Layer7);
-        DeleteRenderLayer(Layer8);
-        DeleteRenderLayer(Layer9);
-        DeleteRenderLayer(Layer10);
-        DeleteRenderLayer(Layer11);
-        DeleteRenderLayer(Layer12);
-        DeleteRenderLayer(Layer13);
+
+        DeleteTextue(Texture);
 
         RenderShutdown();
 
@@ -79,49 +68,18 @@ void OnsterUpdateAndRender(onster_input *Input, r32 dt)
     LayerPushQuad(Layer, C3(0, 1, 0), 255, V4(100, 100, 100, 100));
     LayerPushQuad(Layer, C3(0, 1, 0), 255, V4(100, 100, 100, 100));
 
-    LayerPushQuad(Layer3, C3(1, 1, 0), 255, V4(100, 0, 100, 100));
-
     LayerPushQuad(Layer2, C3(1, 1, 0), 255, V4(50, 0, 100, 100));
     LayerPushQuad(Layer2, C3(0, 1, 1), 255, V4(150, 100, 100, 100));
 
-    LayerPushQuad(Layer3, C3(0, 1, 1), 255, V4(200, 100, 100, 100));
-    LayerPushQuad(Layer3, C3(0, 1, 1), 255, V4(200, 100, 100, 100));
-LayerPushQuad(Layer4, C3(0, 1, 1), 255, V4(200, 100, 100, 100));
-LayerPushQuad(Layer4, C3(0, 1, 1), 255, V4(200, 100, 100, 100));
-LayerPushQuad(Layer5, C3(0, 1, 1), 255, V4(200, 100, 100, 100));
-LayerPushQuad(Layer5, C3(0, 1, 1), 255, V4(200, 100, 100, 100));
-LayerPushQuad(Layer6, C3(0, 1, 1), 255, V4(200, 100, 100, 100));
-LayerPushQuad(Layer6, C3(0, 1, 1), 255, V4(200, 100, 100, 100));
-LayerPushQuad(Layer7, C3(0, 1, 1), 255, V4(200, 100, 100, 100));
-LayerPushQuad(Layer7, C3(0, 1, 1), 255, V4(200, 100, 100, 100));
-LayerPushQuad(Layer8, C3(0, 1, 1), 255, V4(200, 100, 100, 100));
-LayerPushQuad(Layer8, C3(0, 1, 1), 255, V4(200, 100, 100, 100));
-LayerPushQuad(Layer9, C3(0, 1, 1), 255, V4(200, 100, 100, 100));
-LayerPushQuad(Layer9, C3(0, 1, 1), 255, V4(200, 100, 100, 100));
-LayerPushQuad(Layer10, C3(0, 1, 1), 255, V4(200, 100, 100, 100));
-LayerPushQuad(Layer10, C3(0, 1, 1), 255, V4(200, 100, 100, 100));
-LayerPushQuad(Layer11, C3(0, 1, 1), 255, V4(200, 100, 100, 100));
-LayerPushQuad(Layer11, C3(0, 1, 1), 255, V4(200, 100, 100, 100));
-LayerPushQuad(Layer12, C3(0, 1, 1), 255, V4(200, 100, 100, 100));
-LayerPushQuad(Layer12, C3(0, 1, 1), 255, V4(200, 100, 100, 100));
-LayerPushQuad(Layer13, C3(0, 1, 1), 255, V4(200, 100, 100, 100));
-LayerPushQuad(Layer13, C3(0, 1, 1), 255, V4(200, 100, 100, 100));
+    v2 TextureBox;
+    GetTextureBounds(Texture, &TextureBox);
 
+    LayerPushTexture(Layer2, Texture, 255, V4(V2(150, 100), TextureBox));
+    LayerPushTexture(Layer2, Texture2, 255, V4(V2(400, 100), V2(200, 200)));
+    LayerPushTexture(Layer2, Texture2, 160, V4(V2(400, 200), V2(200, 200)));
 
-    RenderLayer(Layer3);
-    RenderLayer(Layer2);
     RenderLayer(Layer);
-
-    RenderLayer(Layer4);
-    RenderLayer(Layer5);
-    RenderLayer(Layer6);
-    RenderLayer(Layer7);
-    RenderLayer(Layer8);
-    RenderLayer(Layer9);
-    RenderLayer(Layer10);
-    RenderLayer(Layer11);
-    RenderLayer(Layer12);
-    RenderLayer(Layer13);
+    RenderLayer(Layer2);
 
     Count++;
 }

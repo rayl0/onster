@@ -85,10 +85,13 @@ LoadFile(char* Path, char* Buffer)
 int main(int argc, char *argv[])
 {
     SDL_Init(SDL_INIT_EVERYTHING);
-    SDL_Window *Window = SDL_CreateWindow("onster", 0, 0,
+    SDL_Window *Window = SDL_CreateWindow("onster",
+                                          SDL_WINDOWPOS_UNDEFINED,
+                                          SDL_WINDOWPOS_UNDEFINED,
                                           1024, 576,
                                           SDL_WINDOW_SHOWN |
-                                          SDL_WINDOW_OPENGL);
+                                          SDL_WINDOW_OPENGL |
+                                          SDL_WINDOW_BORDERLESS);
 
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4);

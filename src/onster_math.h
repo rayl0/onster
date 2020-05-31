@@ -83,6 +83,14 @@ struct v2
         {
             r32 x, y;
         };
+        struct
+        {
+            r32 u, v;
+        };
+        struct
+        {
+            r32 s, t;
+        };
         r32 Data[2];
     };
 };

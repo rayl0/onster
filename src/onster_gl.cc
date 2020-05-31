@@ -1,9 +1,17 @@
 // NOTE(rajat): OpenGL implementation for the renderer
 // NOTE(rajat): Shouldn't have platform specific dependenciess.
+// NOTE(rajat): This implementation is going to be replaced when we will
+// be dynamically load the game in, we will introduce render commands and
+// there will be single implementation for this, which will be moved to
+// the game itself and then this will generate render commands, which of
+// course will be passed, so the platform will be responsible for cho0sing
+// different backend, which give us to change the backend at runtime.
 
 // TODO(rajat): Query gl buffer storage extension before using it
 // TODO(rajat): GL Buffer storage alternative should be provided as fallback
 // TODO(rajat): Use manual memory when memory sub system is finished or being used
+// TODO(rajat): Move the preparing for rendering code from RenderLayer function
+// to standalone function
 
 #include "onster.h"
 #include "onster_render.h"
@@ -24,12 +32,13 @@
 
 // TODO(rajat): This should be lowered or increased depending on the needs, we don't
 // know the needs yet
-#define MAX_QUADS_PER_LAYER 500
+#define MAX_QUADS_PER_LAYER 300
 
 struct gl_ctx
 {
     u32 Shader;
     s32 MaxTextureSlots;
+    m3 Projection;
 
     struct gl_state
     {
@@ -41,7 +50,7 @@ struct gl_ctx
     }GLState;
 }GLContext = {};
 
-// TODO(rajat): I think, it is always a good idea to have your shaders inlined.
+// NOTE(rajat): I think, it is always a good idea to have your shaders inlined.
 // TODO(rajat): Take care of the GLSL version for different platforms
 
 const char *VertexShaderSource = R"(
@@ -106,6 +115,7 @@ RenderInit()
     glShaderSource(FragmentShader, 1, &Buffer, NULL);
     glCompileShader(FragmentShader);
 
+#if ONSTER_DEBUG
     char TempBuffer[2048];
 
     int Err;
@@ -119,12 +129,15 @@ RenderInit()
         printf("GL Shader Error:\n\t<Fragment Shader>\n%s\n", TempBuffer);
     }
 
+#endif
+
     free(Buffer);
 
     u32 VertexShader = glCreateShader(GL_VERTEX_SHADER);
     glShaderSource(VertexShader, 1, &VertexShaderSource, NULL);
     glCompileShader(VertexShader);
 
+#if ONSTER_DEBUG
     glGetShaderiv(VertexShader, GL_COMPILE_STATUS, &Err);
 
     if(!Err)
@@ -134,6 +147,7 @@ RenderInit()
         TODO_LOGGING;
         printf("GL Shader Error:\n\t<Vertex Shader>\n%s\n", TempBuffer);
     }
+#endif
 
     GLContext.Shader = glCreateProgram();
 
@@ -141,6 +155,8 @@ RenderInit()
     glAttachShader(GLContext.Shader, FragmentShader);
 
     glLinkProgram(GLContext.Shader);
+
+#if ONSTER_DEBUG
     glGetProgramiv(GLContext.Shader, GL_LINK_STATUS, &Err);
 
     if(!Err)
@@ -150,6 +166,7 @@ RenderInit()
         TODO_LOGGING;
         printf("GL Error:\n\t<GL Program>\n%s\n", TempBuffer);
     }
+#endif
 
     glUseProgram(GLContext.Shader);
 
@@ -165,6 +182,14 @@ RenderInit()
     glUniform1iv(SamplerArrayLoc, GLContext.MaxTextureSlots, Samples);
 
     free(Samples);
+
+    GLContext.Projection = m3Ortho(0, 1, 1, 0);
+}
+
+void
+RenderUpdateProjection(m3 Projection)
+{
+    GLContext.Projection = Projection;
 }
 
 void
@@ -182,13 +207,20 @@ typedef struct texture
 }texture;
 
 texture
-*CreateTexture(const char *FileName)
+*CreateTexture(char *FileName)
 {
     MEMORY_LEAK;
     texture *Texture = (texture*)malloc(sizeof(texture));
 
     TODO_LOGGING; // NOTE(rajat): It may not be necessary to log here
     Assert(Texture != NULL);
+
+#if ONSTER_DEBUG
+    file_params Texfile = GetFileParams(FileName);
+
+    TODO_LOGGING;
+    Assert(Texfile.Exists);
+#endif
 
     s32 w, h, n;
     ubyte *Pixels = stbi_load(FileName, &w, &h, &n, 0);
@@ -209,7 +241,7 @@ texture
         Format = GL_RGB;
     }
 
-    // STUDY(rajat): Texture swizlling on 30 May, 2020 at night at my bed room.
+    // STUDY(rajat): Texture swizlling on 31 May, 2020 at night at my bed room.
     glTexImage2D(GL_TEXTURE_2D, 0, Format, w, h, 0, Format, GL_UNSIGNED_BYTE, Pixels);
 
     return Texture;
@@ -338,12 +370,32 @@ DeleteRenderLayer(render_layer *Layer)
     free(Layer);
 }
 
-void
-LayerPushQuad(render_layer *Layer, v3 Color, r32 Alpha, v4 DestRect)
+static void
+GLPushQuad(render_layer *Layer, texture *Texture, v4 SrcRect,
+         v3 Color, r32 Alpha, v4 DestRect)
 {
     Assert(Layer != NULL);
 
-    int Index = -1.0f;
+    r32 Index = -1.0f;
+
+    if(Texture != NULL)
+    {
+        for(s32 i = 0; i < Layer->NumTextures; ++i)
+        {
+            if(Texture->Id == Layer->TextureMap[i])
+            {
+                Index = i;
+            }
+        }
+
+        Assert(Layer->NumTextures != GLContext.MaxTextureSlots);
+
+        if(Index == -1.0f)
+        {
+            Layer->TextureMap[Layer->NumTextures] = Texture->Id;
+            Index = Layer->NumTextures++;
+        }
+    }
 
     m3 Model = M3(1.0f);
     Model = m3Translate(Model, DestRect.min);
@@ -362,11 +414,35 @@ LayerPushQuad(render_layer *Layer, v3 Color, r32 Alpha, v4 DestRect)
         VertexData[i] = VertexData[i] * Model;
     }
 
+    v2 TexCoords[4];
+
+    if(Texture == NULL)
+    {
+        TexCoords[0] = V2(0, 0);
+        TexCoords[1] = V2(0, 0);
+        TexCoords[2] = V2(0, 0);
+        TexCoords[3] = V2(0, 0);
+    }
+    else
+    {
+        TexCoords[0] = V2(SrcRect.x / Texture->Width, SrcRect.y / Texture->Height);
+        TexCoords[1] = V2(SrcRect.x / Texture->Width, (SrcRect.y + SrcRect.w) / Texture->Height);
+        TexCoords[2] = V2((SrcRect.x + SrcRect.z) / Texture->Width, (SrcRect.y + SrcRect.w) / Texture->Height);
+        TexCoords[3] = V2((SrcRect.x + SrcRect.z) / Texture->Width, SrcRect.y / Texture->Height);
+    }
+
     r32 OutVertexData[4 * 9] = {
-        VertexData[0].x, VertexData[0].y, 0, 0, Color.r, Color.y, Color.z, Alpha / 255.0f, Index,
-        VertexData[1].x, VertexData[1].y, 0, 0, Color.r, Color.y, Color.z, Alpha / 255.0f, Index,
-        VertexData[2].x, VertexData[2].y, 0, 0, Color.r, Color.y, Color.z, Alpha / 255.0f, Index,
-        VertexData[3].x, VertexData[3].y, 0, 0, Color.r, Color.y, Color.z, Alpha / 255.0f, Index,
+        VertexData[0].x, VertexData[0].y, TexCoords[0].s, TexCoords[0].t,
+        Color.r, Color.y, Color.z, Alpha / 255.0f, Index,
+
+        VertexData[1].x, VertexData[1].y, TexCoords[1].s, TexCoords[1].t,
+        Color.r, Color.y, Color.z, Alpha / 255.0f, Index,
+
+        VertexData[2].x, VertexData[2].y, TexCoords[2].s, TexCoords[2].t,
+        Color.r, Color.y, Color.z, Alpha / 255.0f, Index,
+
+        VertexData[3].x, VertexData[3].y, TexCoords[3].s, TexCoords[3].t,
+        Color.r, Color.y, Color.z, Alpha / 255.0f, Index
     };
 
     for(int i = 0; i < (4 * 9); ++i, ++Layer->VertexBufferCurrent)
@@ -391,10 +467,46 @@ LayerPushQuad(render_layer *Layer, v3 Color, r32 Alpha, v4 DestRect)
     Layer->VertexCount += 6; // NOTE(rajat): This may be redundent to have this, as IndexBufferOffset will same as thsi
 }
 
-void LayerPushTexture(render_layer *Layer, texture *Texture, r32 Alpha, v4 DestRect);
-void LayerPushTextureColor(render_layer *Layer, texture *Texture, v3 Color, r32 Alpha, v4 DestRect);
-void LayerPushTextureFrame(render_layer *Layer, texture *Texture, v4 SrcRect, r32 Alpha, v4 DestRect);
-void LayerPushTextureColorFrame(render_layer *Layer, texture *Texture, v4 SrcRect, v3 Color, r32 Alpha, v4 DestRect);
+void
+LayerPushQuad(render_layer *Layer, v3 Color, r32 Alpha, v4 DestRect)
+{
+    GLPushQuad(Layer, NULL, V4(0, 0, 0, 0), Color, Alpha, DestRect);
+}
+
+
+// TODO(rajat): Add direct tex coord changing functions in the rendering API
+void
+LayerPushTexture(render_layer *Layer, texture *Texture, r32 Alpha, v4 DestRect)
+{
+    Assert(Texture != NULL);
+    GLPushQuad(Layer, Texture, V4(0, 0, Texture->Width, Texture->Height), C3(1, 1, 1), Alpha, DestRect);
+}
+
+void
+LayerPushTextureColor(render_layer *Layer, texture *Texture, v3 Color, r32 Alpha, v4 DestRect)
+{
+    Assert(Texture != NULL);
+    GLPushQuad(Layer, Texture, V4(0, 0, Texture->Width, Texture->Height), Color, Alpha, DestRect);
+}
+
+void
+LayerPushTextureFrame(render_layer *Layer, texture *Texture, v4 SrcRect, r32 Alpha, v4 DestRect)
+{
+    // TODO(rajat): Should it be here
+    Assert((Texture->Width >= SrcRect.max.x) && (Texture->Height >= SrcRect.max.y));
+    Assert(Texture != NULL);
+
+    GLPushQuad(Layer, Texture, SrcRect, C3(1, 1, 1), Alpha, DestRect);
+}
+void
+LayerPushTextureColorFrame(render_layer *Layer, texture *Texture, v4 SrcRect, v3 Color, r32 Alpha, v4 DestRect)
+{
+    // TODO(rajat): Should it be here
+    Assert((Texture->Width >= SrcRect.max.x) && (Texture->Height >= SrcRect.max.y));
+    Assert(Texture != NULL);
+
+    GLPushQuad(Layer, Texture, SrcRect, Color, Alpha, DestRect);
+}
 
 void
 RenderLayer(render_layer *Layer)
@@ -403,11 +515,8 @@ RenderLayer(render_layer *Layer)
 
     glUseProgram(GLContext.Shader);
 
-    // TODO(rajat): Remove this after adding ViewProjection update functions in the API
-    m3 Projection = m3Ortho(0, 800, 600, 0);
-
     u32 ViewProjLocation = glGetUniformLocation(GLContext.Shader, "view_proj");
-    glUniformMatrix3fv(ViewProjLocation, 1, GL_FALSE, Projection.Data);
+    glUniformMatrix3fv(ViewProjLocation, 1, GL_FALSE, GLContext.Projection.Data);
 
     glBindVertexArray(Layer->VertexArray);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, Layer->IndexBuffer);
@@ -421,7 +530,18 @@ RenderLayer(render_layer *Layer)
     glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, sizeof(r32) * 9, (void*)(sizeof(r32) * 4));
     glVertexAttribPointer(2, 1, GL_FLOAT, GL_FALSE, sizeof(r32) * 9, (void*)(sizeof(r32) * 8));
 
+    for(s32 i = 0; i < Layer->NumTextures; ++i)
+    {
+        glActiveTexture(GL_TEXTURE0 + i);
+        glBindTexture(GL_TEXTURE_2D, Layer->TextureMap[i]);
+    }
+
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
     glDrawElements(GL_TRIANGLES, Layer->VertexCount, GL_UNSIGNED_INT, NULL);
+
+    glDisable(GL_BLEND);
 
     Layer->VertexBufferCurrent = Layer->VertexBufferPointer;
     Layer->VertexBufferOffset = 0;
